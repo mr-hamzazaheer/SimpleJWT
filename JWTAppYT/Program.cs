@@ -31,6 +31,7 @@ builder.Services.AddAuthentication(x =>
         ValidateIssuer = false,
         ValidateAudience = false
     };
+    
 });
 
 var app = builder.Build();
