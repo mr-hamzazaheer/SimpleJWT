@@ -1,5 +1,7 @@
 using JWTAppYT;
+using JWTAppYT.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
@@ -20,6 +22,10 @@ builder.Services.AddAuthentication(x =>
 {
     x.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     x.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+}).AddCookie(x =>
+{
+    x.Cookie.Name = "token";
+
 }).AddJwtBearer(x =>
 {
     x.RequireHttpsMetadata = false;
@@ -31,7 +37,38 @@ builder.Services.AddAuthentication(x =>
         ValidateIssuer = false,
         ValidateAudience = false
     };
-    
+    x.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            context.Token = context.Request.Cookies["token"];
+            return Task.CompletedTask;
+        }
+    };
+
+});
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin", "HR").RequireClaim("id", "Israel"));
+    options.AddPolicy("ExclusiveContentPolicy",
+        policy => policy.RequireAssertion(context => context.User.HasClaim(claim => claim.Type == "id" && claim.Value == "Israel") ||
+        context.User.IsInRole("SuperAdmin")));
+
+    options.AddPolicy("IsOldEnoughWithRole", policy => policy.AddRequirements(new IsOldEnoughWithRoleRequirement(21)));
+});
+
+builder.Services.AddSingleton<IAuthorizationHandler, IsOldEnoughWithRoleHandler>();
+
+builder.Services.AddCors(opt =>
+{
+    opt.AddPolicy(name: "CorsPolicy", builder =>
+    {
+        builder.WithOrigins("http://localhost:4200")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
 });
 
 var app = builder.Build();
@@ -42,6 +79,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseCors("CorsPolicy");
 
 app.UseHttpsRedirection();
 

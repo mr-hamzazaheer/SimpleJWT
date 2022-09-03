@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace JWTAppYT.Controllers
 {
-    [Authorize(Roles = "Admin")]
+    [Authorize]
     [ApiController]
     public class ItemsController : Controller
     {
