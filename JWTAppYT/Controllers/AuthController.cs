@@ -3,10 +3,13 @@ using JWTAppYT.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using Newtonsoft.Json;
 using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Nodes;
 
 namespace JWTAppYT.Controllers
 {
@@ -15,10 +18,12 @@ namespace JWTAppYT.Controllers
     {
         private static List<User> UserList = new List<User>();
         private readonly AppSettings _applicationSettings;
+        private readonly HttpClient _httpClient;
 
-        public AuthController(IOptions<AppSettings> _applicationSettings)
+        public AuthController(IOptions<AppSettings> _applicationSettings, HttpClient httpClient)
         {
             this._applicationSettings = _applicationSettings.Value;
+            _httpClient = httpClient;
         }
 
 
@@ -131,10 +136,10 @@ namespace JWTAppYT.Controllers
                   });
         }
 
-        [HttpDelete]
+        [HttpDelete("RevokeToken/{username}")]
         public async Task<IActionResult> RevokeToken(string username)
         {
-            UserList.Where(x => x.UserName == username).Select(x => x.Token = String.Empty);
+            UserList.Where(x => x.UserName == username).First().Token = "";
 
             return Ok();
         }
@@ -151,6 +156,35 @@ namespace JWTAppYT.Controllers
             var payload = await GoogleJsonWebSignature.ValidateAsync(credential, settings);
 
             var user = UserList.Where(x => x.UserName == payload.Name).FirstOrDefault();
+
+            if (user != null)
+            {
+                return Ok(JWTGenerator(user));
+            }
+            else
+            {
+                return BadRequest();
+            }
+        }
+
+        [HttpPost("LoginWithFacebook")]
+        public async Task<IActionResult> LoginWithFacebook([FromBody] string credential)
+        {
+            HttpResponseMessage debugTokenResponse = await _httpClient.GetAsync("https://graph.facebook.com/debug_token?input_token=" + credential + $"&access_token={this._applicationSettings.FacebookAppId}|{this._applicationSettings.FacebookSecret}");
+
+            var stringThing = await debugTokenResponse.Content.ReadAsStringAsync();
+            var userOBJK = JsonConvert.DeserializeObject<FBUser>(stringThing);
+
+            if (userOBJK.Data.IsValid == false)
+            {
+                return Unauthorized();
+            }
+
+            HttpResponseMessage meResponse = await _httpClient.GetAsync("https://graph.facebook.com/me?fields=first_name,last_name,email,id&access_token=" + credential);
+            var userContent = await meResponse.Content.ReadAsStringAsync();
+            var userContentObj = JsonConvert.DeserializeObject<FBUserInfo>(userContent);
+
+            var user = UserList.Where(x => x.UserName == userContentObj.Email).FirstOrDefault();
 
             if (user != null)
             {
